@@ -16,6 +16,9 @@
 
   var MAKS_KUNJUNGAN = 6;               // slot II–VII di halaman belakang SPD
   var BARIS_SLOT = [10, 15, 20, 25, 30, 35];
+  var KOLOM_BELAKANG_AWAL = 8, KOLOM_BELAKANG_AKHIR = 17;   // H..Q
+  var BARIS_TERAKHIR = 52;                                 // A1:Q52 = satu halaman
+  var LEBAR_BELAKANG = KOLOM_BELAKANG_AKHIR - KOLOM_BELAKANG_AWAL + 1;
   var BULAN = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli",
     "Agustus", "September", "Oktober", "November", "Desember"];
 
@@ -91,8 +94,19 @@
     ["kode rekening", "kodeRekening"],
     ["keterangan lain", "keterangan"],
     ["nama pejabat", "pejabatNama"],
-    ["nip pejabat", "pejabatNip"]
+    ["nip pejabat", "pejabatNip"],
+    ["kode nomor spd", "kodeSPD"]
   ];
+
+  // Nomor SPD lengkap = angka urut / kode / bulan romawi / tahun.
+  // Bulan & tahun diambil dari Tanggal dikeluarkan (SPD).
+  var ROMAWI = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
+  function nomorLengkap(isian, k) {
+    var s = teks(isian);
+    if (!s || s.indexOf("/") >= 0) return s;          // sudah lengkap: pakai apa adanya
+    if (/^\d+(\.0+)?$/.test(s)) s = String(parseInt(s, 10) === 0 ? s : s.replace(/\.0+$/, ""));
+    return s + "/" + k.kodeSPD + "/" + ROMAWI[k.tgl.m - 1] + "/" + k.tgl.y;
+  }
   var WAJIB_KEGIATAN = {
     tglKeluar: "Tanggal dikeluarkan (SPD)", tempatKeluar: "Tempat dikeluarkan",
     penggunaAnggaran: "Pengguna Anggaran/Kuasa Pengguna Anggaran", maksud: "Maksud Perjalanan Dinas",
@@ -179,7 +193,7 @@
 
   /**
    * Memeriksa data dan menyusun rencana SPD.
-   * Hasil: { galat[], peringatan[], spd[], perluNomor[] }
+   * Hasil: { galat[], peringatan[], spd[] }
    * galat = menghentikan proses; peringatan = boleh lanjut.
    */
   function periksa(data, pegawaiResmi) {
@@ -206,7 +220,7 @@
     if (!data.penugasan.length) galat.push("Sheet Penugasan belum berisi kunjungan.");
 
     // baris-baris kunjungan
-    var kunjungan = [];
+    var kunjungan = [], adaNomorPendek = false;
     data.penugasan.forEach(function (r) {
       var lok = "Penugasan baris " + r.baris + ": ";
       var masalah = [];
@@ -222,8 +236,19 @@
       if (k.tgl && kunciTgl(t.tgl) < kunciTgl(k.tgl)) {
         peringatan.push(lok + "kunjungan " + tglPanjang(t.tgl) + " lebih awal dari tanggal SPD dikeluarkan (" + tglPanjang(k.tgl) + ").");
       }
-      kunjungan.push({ baris: r.baris, nomor: r.nomor, pegawai: peg, tujuan: r.tujuan, tgl: t.tgl });
+      if (r.nomor.indexOf("/") < 0) {
+        if (!/^\d+(\.0+)?$/.test(r.nomor)) {
+          galat.push(lok + "Nomor SPD '" + r.nomor + "' tidak dikenali; isi angka urutnya saja (mis. 2006).");
+          return;
+        }
+        adaNomorPendek = true;
+      }
+      kunjungan.push({ baris: r.baris, nomor: k.tgl ? nomorLengkap(r.nomor, k) : r.nomor, pegawai: peg, tujuan: r.tujuan, tgl: t.tgl });
     });
+    if (adaNomorPendek && !k.kodeSPD) {
+      galat.push("Sheet Kegiatan: 'Kode Nomor SPD' belum diisi (mis. SPD/PKM-ML). Unduh template terbaru bila baris ini belum ada.");
+      kunjungan = [];
+    }
 
     // satu nomor = satu pegawai, satu pegawai = satu nomor
     var perNomor = {}, nomorPerPegawai = {};
@@ -242,12 +267,13 @@
       var n = Object.keys(nomorPerPegawai[kp]);
       if (n.length > 1) {
         galat.push(petaPegawai[kp].nama + " memakai " + n.length + " Nomor SPD berbeda (" + n.join(", ") +
-          "). Pakai satu nomor saja; bila kunjungannya lebih dari 6, aplikasi akan memecahnya.");
+          "). Pakai satu nomor yang sama untuk semua kunjungannya.");
       }
     });
 
-    // rencana SPD
-    var spd = [], perluNomor = [];
+    // rencana SPD: satu nomor = satu SPD = satu sheet. Halaman depan memuat
+    // semua kunjungan; halaman belakang menampung 6 kunjungan per halaman.
+    var spd = [];
     Object.keys(perNomor).forEach(function (no) {
       var v = perNomor[no].slice().sort(function (a, b) {
         var x = kunciTgl(a.tgl), y = kunciTgl(b.tgl);
@@ -265,26 +291,17 @@
       if (!peg.nip) peringatan.push("Sheet Pegawai: NIP/NIK " + peg.nama + " kosong.");
       if (!peg.jabatan) peringatan.push("Sheet Pegawai: Jabatan " + peg.nama + " kosong.");
 
-      var jumlahBagian = Math.ceil(v.length / MAKS_KUNJUNGAN);
-      for (var b = 0; b < jumlahBagian; b++) {
-        var item = {
-          kunci: no + "#" + (b + 1), nomorAsal: no, bagian: b + 1, jumlahBagian: jumlahBagian,
-          nomor: b === 0 ? no : null, pegawai: peg,
-          kunjungan: v.slice(b * MAKS_KUNJUNGAN, (b + 1) * MAKS_KUNJUNGAN)
-        };
-        spd.push(item);
-        if (b > 0) perluNomor.push(item);
-      }
-      if (jumlahBagian > 1) {
-        peringatan.push(peg.nama + " punya " + v.length + " kunjungan, dipecah menjadi " + jumlahBagian +
-          " SPD (maks. 6 kunjungan per SPD). Isi Nomor SPD tambahan di bawah.");
+      var halBelakang = Math.ceil(v.length / MAKS_KUNJUNGAN);
+      spd.push({ nomor: no, pegawai: peg, kunjungan: v, halamanBelakang: halBelakang });
+      if (halBelakang > 1) {
+        peringatan.push(peg.nama + " punya " + v.length + " kunjungan: tetap satu SPD (No. " + no + ") dengan " +
+          halBelakang + " halaman belakang, jadi sheet ini dicetak " + (halBelakang + 1) + " halaman.");
       }
     });
     spd.sort(function (a, b) {
-      var x = nomorUrut(a.nomorAsal), y = nomorUrut(b.nomorAsal);
+      var x = nomorUrut(a.nomor), y = nomorUrut(b.nomor);
       if (x !== y) return x - y;
-      if (a.nomorAsal !== b.nomorAsal) return a.nomorAsal < b.nomorAsal ? -1 : 1;
-      return a.bagian - b.bagian;
+      return a.nomor < b.nomor ? -1 : a.nomor > b.nomor ? 1 : 0;
     });
 
     // pembanding daftar pegawai resmi (repo)
@@ -296,7 +313,7 @@
       }
     }
 
-    return { galat: galat, peringatan: peringatan, spd: spd, perluNomor: perluNomor, kegiatan: k };
+    return { galat: galat, peringatan: peringatan, spd: spd, kegiatan: k };
   }
 
   function bandingkanPegawai(milikFile, resmi) {
@@ -347,26 +364,34 @@
     c.F47 = k.pejabatNama;
     c.F48 = nipPejabat;
 
-    // ---- halaman belakang
-    c.P1 = k.tempatBerangkat;
-    c.P3 = p[0].tujuan;
-    c.P4 = tglPanjang(p[0].tgl);
-    c.N5 = k.penggunaAnggaran;
-    c.N8 = k.pejabatNama;
-    c.N9 = nipPejabat;
-    BARIS_SLOT.forEach(function (r, i) {
-      var v = p[i];
-      c["L" + r] = v ? v.tujuan : "";
-      c["L" + (r + 1)] = v ? tglPanjang(v.tgl) : "";
-      c["P" + r] = v ? v.tujuan : "";
-      c["P" + (r + 1)] = v ? k.tempatBerangkat : "";
-      c["P" + (r + 2)] = v ? tglPanjang(v.tgl) : "";
-    });
-    c.L40 = k.tempatBerangkat;
-    c.L41 = tglPanjang(p[p.length - 1].tgl);
-    c.J42 = k.penggunaAnggaran;
-    c.J43 = k.pejabatNama;
-    c.J46 = nipPejabat;
+    // ---- halaman belakang (6 kunjungan per halaman). Halaman ke-2 dst.
+    // adalah salinan kolom H–Q yang digeser ke kanan sejauh LEBAR_BELAKANG.
+    var jumlahHal = Math.ceil(p.length / MAKS_KUNJUNGAN);
+    for (var h = 0; h < jumlahHal; h++) {
+      var off = h * LEBAR_BELAKANG, bagian = p.slice(h * MAKS_KUNJUNGAN, (h + 1) * MAKS_KUNJUNGAN);
+      var akhir = h === jumlahHal - 1;
+      var set = function (ref, nilai) { c[geser(ref, off)] = nilai; };
+      set("P1", k.tempatBerangkat);
+      set("P3", bagian[0].tujuan);
+      set("P4", tglPanjang(bagian[0].tgl));
+      set("N5", k.penggunaAnggaran);
+      set("N8", k.pejabatNama);
+      set("N9", nipPejabat);
+      BARIS_SLOT.forEach(function (r, i) {
+        var v = bagian[i];
+        set("L" + r, v ? v.tujuan : "");
+        set("L" + (r + 1), v ? tglPanjang(v.tgl) : "");
+        set("P" + r, v ? v.tujuan : "");
+        set("P" + (r + 1), v ? k.tempatBerangkat : "");
+        set("P" + (r + 2), v ? tglPanjang(v.tgl) : "");
+      });
+      // VIII "Tiba kembali" hanya di halaman belakang terakhir
+      set("L40", akhir ? k.tempatBerangkat : "");
+      set("L41", akhir ? tglPanjang(p[p.length - 1].tgl) : "");
+      set("J42", k.penggunaAnggaran);
+      set("J43", k.pejabatNama);
+      set("J46", nipPejabat);
+    }
     return c;
   }
 
@@ -378,6 +403,15 @@
     var s = /^[A-Z]+/.exec(ref)[0], n = 0;
     for (var i = 0; i < s.length; i++) n = n * 26 + s.charCodeAt(i) - 64;
     return n;
+  }
+  function hurufKolom(n) {
+    var s = "";
+    while (n > 0) { var m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); }
+    return s;
+  }
+  function geser(ref, off) {
+    if (!off) return ref;
+    return hurufKolom(kolom(ref) + off) + /\d+$/.exec(ref)[0];
   }
   function anakElemen(el, nama) {
     var out = [];
@@ -429,8 +463,74 @@
     return baris > 3 ? (baris - 3) * TINGGI_BARIS_TEKS : 0;
   }
 
-  function isiSheetXml(env, xml, sel, aktif) {
+  // Menambah halaman belakang ke-2 dst.: salin sel, lebar kolom, dan sel
+  // gabungan kolom H–Q ke kanan, lalu tambah pemisah halaman (page break).
+  function tambahHalamanBelakang(doc, tambahan) {
+    if (!tambahan) return;
+    var sheetData = doc.getElementsByTagName("sheetData")[0];
+    var kolomTerakhir = KOLOM_BELAKANG_AKHIR + tambahan * LEBAR_BELAKANG;
+    anakElemen(sheetData, "row").forEach(function (row) {
+      row.removeAttribute("spans");
+      var asal = anakElemen(row, "c").filter(function (c) {
+        var n = kolom(c.getAttribute("r"));
+        return n >= KOLOM_BELAKANG_AWAL && n <= KOLOM_BELAKANG_AKHIR;
+      });
+      for (var t = 1; t <= tambahan; t++) {
+        asal.forEach(function (c) {
+          var baru = c.cloneNode(true);
+          baru.setAttribute("r", geser(c.getAttribute("r"), t * LEBAR_BELAKANG));
+          row.appendChild(baru);
+        });
+      }
+    });
+    var cols = doc.getElementsByTagName("cols")[0];
+    if (cols) {
+      var defCol = anakElemen(cols, "col");
+      for (var t = 1; t <= tambahan; t++) {
+        defCol.forEach(function (col) {
+          var a = Math.max(+col.getAttribute("min"), KOLOM_BELAKANG_AWAL);
+          var b = Math.min(+col.getAttribute("max"), KOLOM_BELAKANG_AKHIR);
+          if (a > b) return;
+          var baru = col.cloneNode(true);
+          baru.setAttribute("min", String(a + t * LEBAR_BELAKANG));
+          baru.setAttribute("max", String(b + t * LEBAR_BELAKANG));
+          cols.appendChild(baru);
+        });
+      }
+    }
+    var merges = doc.getElementsByTagName("mergeCells")[0];
+    if (merges) {
+      var asalMerge = anakElemen(merges, "mergeCell").filter(function (m) {
+        var r = m.getAttribute("ref").split(":");
+        return kolom(r[0]) >= KOLOM_BELAKANG_AWAL && kolom(r[1]) <= KOLOM_BELAKANG_AKHIR;
+      });
+      for (var t = 1; t <= tambahan; t++) {
+        asalMerge.forEach(function (m) {
+          var r = m.getAttribute("ref").split(":"), baru = m.cloneNode(true);
+          baru.setAttribute("ref", geser(r[0], t * LEBAR_BELAKANG) + ":" + geser(r[1], t * LEBAR_BELAKANG));
+          merges.appendChild(baru);
+        });
+      }
+      merges.setAttribute("count", String(anakElemen(merges, "mergeCell").length));
+    }
+    var breaks = doc.getElementsByTagName("colBreaks")[0];
+    if (breaks) {
+      for (var t = 1; t <= tambahan; t++) {
+        var brk = anakElemen(breaks, "brk")[0].cloneNode(true);
+        brk.setAttribute("id", String(KOLOM_BELAKANG_AKHIR + (t - 1) * LEBAR_BELAKANG));
+        breaks.appendChild(brk);
+      }
+      var n = String(anakElemen(breaks, "brk").length);
+      breaks.setAttribute("count", n);
+      breaks.setAttribute("manualBreakCount", n);
+    }
+    var dim = doc.getElementsByTagName("dimension")[0];
+    if (dim) dim.setAttribute("ref", dim.getAttribute("ref").replace(/:[A-Z]+/, ":" + hurufKolom(kolomTerakhir)));
+  }
+
+  function isiSheetXml(env, xml, sel, aktif, tambahan) {
     var doc = new env.DOMParser().parseFromString(xml, "application/xml");
+    tambahHalamanBelakang(doc, tambahan || 0);
     var sheetData = doc.getElementsByTagName("sheetData")[0];
     Object.keys(sel).forEach(function (ref) { tulisSel(doc, sheetData, ref, sel[ref]); });
     var tambah = tinggiTambahan(sel.E24 || "");
@@ -441,6 +541,17 @@
           r.setAttribute("customHeight", "1");
         }
       });
+      // baris yang ditinggikan ikut memanjangkan halaman -> kecilkan skala
+      // cetak sheet ini secukupnya supaya tetap satu halaman per sisi.
+      var total = 0;
+      anakElemen(sheetData, "row").forEach(function (r) {
+        if (+r.getAttribute("r") <= BARIS_TERAKHIR) total += parseFloat(r.getAttribute("ht") || "15");
+      });
+      var ps = doc.getElementsByTagName("pageSetup")[0];
+      if (ps) {
+        var skala = parseFloat(ps.getAttribute("scale") || "100");
+        ps.setAttribute("scale", String(Math.max(40, Math.floor(skala * (total - tambah) / total))));
+      }
     }
     var sv = doc.getElementsByTagName("sheetView")[0];
     if (sv && !aktif) sv.removeAttribute("tabSelected");
@@ -475,23 +586,12 @@
   /**
    * Menghasilkan file SPD.
    * env: { JSZip, DOMParser, XMLSerializer }
-   * nomorTambahan: { "<kunci>": "nomor SPD" } untuk bagian ke-2 dst.
    * Hasil: { data: Uint8Array, namaFile, sheet: [{nama, nomor, pegawai, jumlah}] }
    */
-  async function buatSPD(env, masterBuf, hasilPeriksa, nomorTambahan) {
+  async function buatSPD(env, masterBuf, hasilPeriksa) {
     if (hasilPeriksa.galat.length) throw new Error("Masih ada kesalahan pada data.");
     var k = hasilPeriksa.kegiatan;
-    var daftar = hasilPeriksa.spd.map(function (it) {
-      var o = Object.assign({}, it);
-      if (!o.nomor) o.nomor = teks((nomorTambahan || {})[o.kunci]);
-      if (!o.nomor) throw new Error("Nomor SPD tambahan untuk " + o.pegawai.nama + " (bagian " + o.bagian + ") belum diisi.");
-      return o;
-    });
-    var semuaNomor = {};
-    daftar.forEach(function (o) {
-      if (semuaNomor[o.nomor]) throw new Error("Nomor SPD " + o.nomor + " dipakai dua kali.");
-      semuaNomor[o.nomor] = true;
-    });
+    var daftar = hasilPeriksa.spd;
 
     var zip = await env.JSZip.loadAsync(masterBuf);
     var tplSheet = await zip.file("xl/worksheets/sheet1.xml").async("string");
@@ -509,7 +609,7 @@
     var dipakai = {}, sheetsXml = "", relsXml = "", ctXml = "", ringkasan = [];
     daftar.forEach(function (o, i) {
       var n = i + 1, nama = namaSheet(o, dipakai);
-      zip.file("xl/worksheets/sheet" + n + ".xml", isiSheetXml(env, tplSheet, isiSel(k, o), i === 0));
+      zip.file("xl/worksheets/sheet" + n + ".xml", isiSheetXml(env, tplSheet, isiSel(k, o), i === 0, o.halamanBelakang - 1));
       zip.file("xl/worksheets/_rels/sheet" + n + ".xml.rels",
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
         '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing' + n + '.xml"/></Relationships>');
@@ -519,7 +619,7 @@
       relsXml += '<Relationship Id="rIdS' + n + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet' + n + '.xml"/>';
       ctXml += '<Override PartName="/xl/worksheets/sheet' + n + '.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>' +
         '<Override PartName="/xl/drawings/drawing' + n + '.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>';
-      ringkasan.push({ nama: nama, nomor: o.nomor, pegawai: o.pegawai.nama, jumlah: o.kunjungan.length });
+      ringkasan.push({ nama: nama, nomor: o.nomor, pegawai: o.pegawai.nama, jumlah: o.kunjungan.length, halaman: o.halamanBelakang + 1 });
     });
 
     zip.file("xl/workbook.xml", wb.replace(/<sheets>.*<\/sheets>/, "<sheets>" + sheetsXml + "</sheets>"));

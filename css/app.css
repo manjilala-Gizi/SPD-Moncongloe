@@ -116,7 +116,7 @@ td.nomor { white-space: nowrap; }
 td.tgl { min-width: 150px; }
 td.pegawai { min-width: 170px; }
 .angka { text-align: right; }
-tr.perlu-nomor { background: var(--kuning-muda); }
+tr.hal-tambah { background: var(--kuning-muda); }
 .input-nomor {
   width: 220px; max-width: 100%; font: inherit; padding: 6px 8px;
   border: 1px solid #c7a54f; border-radius: 6px; background: #fff;

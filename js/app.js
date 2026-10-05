@@ -107,24 +107,12 @@
     tbody.innerHTML = "";
     keadaan.namaSheet = h.spd.length && !h.galat.length ? SPDCore.pratinjauNamaSheet(h.spd) : [];
     h.spd.forEach(function (s, i) {
-      var selNomor;
-      if (s.nomor) {
-        selNomor = el("td", { class: "nomor", text: s.nomor });
-      } else {
-        var inp = el("input", {
-          type: "text", class: "input-nomor", "data-kunci": s.kunci,
-          placeholder: "Nomor SPD tambahan", "aria-label": "Nomor SPD tambahan untuk " + s.pegawai.nama
-        });
-        inp.addEventListener("input", cekSiap);
-        selNomor = el("td", { class: "nomor" }, [inp, el("small", {
-          text: "Bagian " + s.bagian + " dari " + s.jumlahBagian + " (lanjutan " + s.nomorAsal + ")"
-        })]);
-      }
-      tbody.appendChild(el("tr", s.nomor ? {} : { class: "perlu-nomor" }, [
+      tbody.appendChild(el("tr", s.halamanBelakang > 1 ? { class: "hal-tambah" } : {}, [
         el("td", { class: "sheet", text: keadaan.namaSheet[i] || "—" }),
-        selNomor,
+        el("td", { class: "nomor", text: s.nomor }),
         el("td", { class: "pegawai", text: s.pegawai.nama }),
         el("td", { class: "angka", text: String(s.kunjungan.length) }),
+        el("td", { class: "angka", text: String(s.halamanBelakang + 1) }),
         el("td", { class: "tgl", text: SPDCore.daftarTanggal(s.kunjungan.map(function (v) { return v.tgl; })) })
       ]));
     });
@@ -135,20 +123,9 @@
     $("langkah-3").scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
-  function nomorTambahan() {
-    var out = {};
-    Array.prototype.forEach.call(document.querySelectorAll(".input-nomor"), function (i) {
-      out[i.getAttribute("data-kunci")] = i.value.trim();
-    });
-    return out;
-  }
-
   function cekSiap() {
-    var btn = $("btn-buat"), kosong = 0;
-    var tambahan = nomorTambahan();
-    Object.keys(tambahan).forEach(function (k) { if (!tambahan[k]) kosong++; });
-    btn.disabled = !keadaan.hasil || keadaan.hasil.galat.length > 0 || kosong > 0;
-    $("pesan-buat").textContent = kosong ? "Isi " + kosong + " Nomor SPD tambahan di tabel atas terlebih dahulu." : "";
+    $("btn-buat").disabled = !keadaan.hasil || keadaan.hasil.galat.length > 0;
+    $("pesan-buat").textContent = "";
     $("pesan-buat").className = "pesan";
   }
 
@@ -159,7 +136,7 @@
     pesan.textContent = "Menyusun file SPD…";
     pesan.className = "pesan";
     ambil("assets/master_spd.xlsx")
-      .then(function (master) { return SPDCore.buatSPD(env, master, keadaan.hasil, nomorTambahan()); })
+      .then(function (master) { return SPDCore.buatSPD(env, master, keadaan.hasil); })
       .then(function (r) {
         var blob = new Blob([r.data], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
         var a = el("a", { href: URL.createObjectURL(blob), download: r.namaFile });

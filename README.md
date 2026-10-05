@@ -2,7 +2,7 @@
 
 Aplikasi web (PWA) untuk membuat file **Surat Perjalanan Dinas (SPD)** dari template Excel.
 Template masuk, file SPD keluar: satu sheet per SPD, A4 portrait, dua halaman timbal balik
-(depan kolom A–G, belakang kolom H–Q).
+(depan kolom A–G, belakang kolom H–Q; halaman belakang tambahan di kolom R dst. bila kunjungan > 6).
 
 Semua proses berjalan di browser petugas. File **tidak dikirim ke server mana pun**.
 Setelah dibuka sekali, aplikasi juga bisa dipakai tanpa internet dan bisa dipasang di HP/laptop.
@@ -20,8 +20,8 @@ Setelah dibuka sekali, aplikasi juga bisa dipakai tanpa internet dan bisa dipasa
 
 | Hal | Aturan |
 |---|---|
-| Nomor SPD | Berlaku per pegawai. Semua kunjungan satu pegawai memakai nomor yang sama. |
-| Lebih dari 6 kunjungan | Dipecah otomatis per 6 kunjungan. Nomor SPD untuk lembar lanjutan diisi petugas di aplikasi. |
+| Nomor SPD | Petugas cukup mengetik angka urut (mis. `2006`). Nomor lengkap dirakit otomatis: `2006/` + *Kode Nomor SPD* (sheet Kegiatan, mis. `SPD/PKM-ML`) + `/` + bulan romawi + `/` + tahun dari *Tanggal dikeluarkan (SPD)* → `2006/SPD/PKM-ML/IX/2026`. Nomor lengkap yang diketik manual tetap diterima. Satu pegawai = satu nomor. |
+| Lebih dari 6 kunjungan | Tetap satu SPD dengan nomor yang sama. Halaman depan memuat semua tanggal & tujuan; halaman belakang ditambah (6 kunjungan per halaman). Slot I diisi di tiap halaman belakang, bagian VIII *Tiba kembali* hanya di halaman belakang terakhir. |
 | Nama sheet | `NamaDepan_dd-mm`, dengan tanggal kunjungan pertama (contoh `Riski_06-08`). |
 | Lama perjalanan | Jumlah kunjungan, misalnya `3 (Tiga) Hari`. Satu kunjungan = satu hari, tanpa menginap. |
 | Tanggal berangkat | `06, 13, 15 Agustus 2026`. Lintas bulan: `28 Juli, 02 Agustus 2026`. |
