@@ -7,5 +7,5 @@
  * Biarkan kosong untuk menyimpan data di perangkat (browser) saja.
  */
 window.SPD_CONFIG = {
-  apiUrl: ""
+  apiUrl: "https://script.google.com/macros/s/AKfycbyKhy0VF0z3ktMYAseEP_YsOu6yhosyq-JjRP39s121d0kuWMwgonJYTJeGWIOdOkU-/exec"
 };
