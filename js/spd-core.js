@@ -95,7 +95,8 @@
     ["keterangan lain", "keterangan"],
     ["nama pejabat", "pejabatNama"],
     ["nip pejabat", "pejabatNip"],
-    ["kode nomor spd", "kodeSPD"]
+    ["kode nomor spd", "kodeSPD"],
+    ["dasar surat tugas", "dasar"]
   ];
 
   // Nomor SPD lengkap = angka urut / kode / bulan romawi / tahun.
@@ -203,8 +204,12 @@
     Object.keys(WAJIB_KEGIATAN).forEach(function (kunci) {
       if (!k[kunci]) galat.push("Sheet Kegiatan: '" + WAJIB_KEGIATAN[kunci] + "' belum diisi.");
     });
-    if (!k.nomorST) peringatan.push("Sheet Kegiatan: Nomor Surat Tugas kosong (tidak dicetak di SPD, hanya sebagai rujukan).");
+    if (!k.nomorST) peringatan.push("Sheet Kegiatan: Nomor Surat Tugas kosong, jadi Surat Tugas dicetak tanpa nomor.");
     if (!k.keterangan) k.keterangan = "-";
+    if (!k.dasar) {
+      peringatan.push("Sheet Kegiatan: 'Dasar Surat Tugas' kosong, jadi bagian Dasar di Surat Tugas tidak terisi. " +
+        "Unduh template terbaru bila baris ini belum ada.");
+    }
 
     var tk = bacaTanggal(k.tglKeluarRaw);
     if (k.tglKeluar && !tk.tgl) galat.push("Sheet Kegiatan: Tanggal dikeluarkan bukan tanggal yang valid.");
@@ -630,6 +635,104 @@
     return { data: data, namaFile: namaFile(k), sheet: ringkasan };
   }
 
+  // ------------------------------------------------------------ Surat Tugas
+  // Surat Tugas (.docx) dibuat dari cetakan master_st.docx. Cetakan berisi
+  // penanda {{NAMA}}; baris tabel yang memuat {{J_...}} (jadwal) dan
+  // {{L_...}} (lampiran pegawai) diulang sebanyak datanya.
+  var WNS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+  var W14NS = "http://schemas.microsoft.com/office/word/2010/wordml";
+  var HARI = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
+
+  function namaHari(t) { return HARI[new Date(Date.UTC(t.y, t.m - 1, t.d)).getUTCDay()]; }
+  function tglAngka(t) { return pad2(t.d) + "-" + pad2(t.m) + "-" + t.y; }
+  function tglST(t) { return pad2(t.d) + " \u2013 " + pad2(t.m) + " \u2013 " + t.y; }
+
+  // "Tokka Desa Bonto Marannu" -> Posyandu "Tokka", Desa "Bonto Marannu"
+  function pisahTujuan(tujuan) {
+    var m = /^(.*?)\s+Desa\s+(.+)$/i.exec(tujuan);
+    return m ? { posyandu: m[1], desa: m[2] } : { posyandu: tujuan, desa: "-" };
+  }
+
+  /** Data Surat Tugas: jadwal (tanggal + tempat unik) dan lampiran per pegawai. */
+  function dataST(hasilPeriksa) {
+    var semua = [], seen = {};
+    hasilPeriksa.spd.forEach(function (o) { semua = semua.concat(o.kunjungan); });
+    semua.sort(function (a, b) {
+      var x = kunciTgl(a.tgl), y = kunciTgl(b.tgl);
+      return x < y ? -1 : x > y ? 1 : a.baris - b.baris;
+    });
+    var jadwal = [];
+    semua.forEach(function (v) {
+      var kunci = kunciTgl(v.tgl) + "|" + v.tujuan.toLowerCase();
+      if (seen[kunci]) return;
+      seen[kunci] = true;
+      var t = pisahTujuan(v.tujuan);
+      jadwal.push({ hari: namaHari(v.tgl) + " / " + tglAngka(v.tgl), posyandu: t.posyandu, desa: t.desa });
+    });
+    var lampiran = hasilPeriksa.spd.map(function (o) {
+      var tempat = [];
+      o.kunjungan.forEach(function (v) { if (tempat.indexOf(v.tujuan) < 0) tempat.push(v.tujuan); });
+      var peg = o.pegawai;
+      return { nama: peg.nama + (peg.nip ? " / " + peg.nip : ""), pangkat: peg.pangkat || "-",
+        jabatan: peg.jabatan || "-", tempat: tempat.join(", ") };
+    });
+    return { jadwal: jadwal, lampiran: lampiran };
+  }
+
+  function isiPenanda(node, nilai) {
+    var ts = node.getElementsByTagNameNS(WNS, "t");
+    for (var i = 0; i < ts.length; i++) {
+      var s = ts[i].textContent;
+      if (s.indexOf("{{") < 0) continue;
+      ts[i].textContent = s.replace(/\{\{([A-Z_]+)\}\}/g, function (m, k) { return k in nilai ? nilai[k] : m; });
+    }
+  }
+  function ulangBaris(doc, penanda, daftar) {
+    var rows = doc.getElementsByTagNameNS(WNS, "tr"), tpl = null;
+    for (var i = 0; i < rows.length && !tpl; i++) if (rows[i].textContent.indexOf(penanda) >= 0) tpl = rows[i];
+    if (!tpl) throw new Error("Cetakan Surat Tugas tidak memuat baris " + penanda + ".");
+    daftar.forEach(function (nilai) {
+      var baru = tpl.cloneNode(true);
+      var ps = baru.getElementsByTagNameNS(WNS, "p");
+      for (var j = 0; j < ps.length; j++) { ps[j].removeAttributeNS(W14NS, "paraId"); ps[j].removeAttributeNS(W14NS, "textId"); }
+      isiPenanda(baru, nilai);
+      tpl.parentNode.insertBefore(baru, tpl);
+    });
+    tpl.parentNode.removeChild(tpl);
+  }
+
+  /**
+   * Menghasilkan Surat Tugas (.docx) untuk seluruh penugasan dalam template.
+   * env: { JSZip, DOMParser, XMLSerializer }
+   * Hasil: { data: Uint8Array, namaFile, jadwal, pegawai }
+   */
+  async function buatST(env, masterBuf, hasilPeriksa) {
+    if (hasilPeriksa.galat.length) throw new Error("Masih ada kesalahan pada data.");
+    var k = hasilPeriksa.kegiatan, d = dataST(hasilPeriksa);
+    var zip = await env.JSZip.loadAsync(masterBuf);
+    var xml = await zip.file("word/document.xml").async("string");
+    var doc = new env.DOMParser().parseFromString(xml, "application/xml");
+
+    ulangBaris(doc, "{{J_NO}}", d.jadwal.map(function (j, i) {
+      return { J_NO: String(i + 1), J_HARI: j.hari, J_POSYANDU: j.posyandu, J_DESA: j.desa };
+    }));
+    ulangBaris(doc, "{{L_NO}}", d.lampiran.map(function (l, i) {
+      return { L_NO: String(i + 1), L_NAMA: l.nama, L_PANGKAT: l.pangkat, L_JABATAN: l.jabatan, L_TEMPAT: l.tempat };
+    }));
+    isiPenanda(doc, {
+      NOMOR_ST: k.nomorST || "", DASAR: k.dasar || "", MAKSUD: k.maksud,
+      TEMPAT_KELUAR: k.tempatKeluar, TANGGAL_ST: tglST(k.tgl),
+      JABATAN_PEJABAT: k.penggunaAnggaran, NAMA_PEJABAT: k.pejabatNama, NIP_PEJABAT: k.pejabatNip
+    });
+
+    var out = new env.XMLSerializer().serializeToString(doc).replace(/^<\?xml[^>]*\?>\s*/, "");
+    zip.file("word/document.xml", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' + out);
+    var data = await zip.generateAsync({ type: "uint8array", compression: "DEFLATE" });
+    var nama = ("Surat Tugas " + k.maksud + " " + BULAN[k.tgl.m - 1] + " " + k.tgl.y)
+      .replace(/[\\\/:\*\?"<>\|]/g, "-").replace(/\s+/g, " ").trim() + ".docx";
+    return { data: data, namaFile: nama, jadwal: d.jadwal.length, pegawai: d.lampiran.length };
+  }
+
   /** Nama sheet yang akan dipakai, untuk ditampilkan sebelum file dibuat. */
   function pratinjauNamaSheet(spd) {
     var dipakai = {};
@@ -643,6 +746,7 @@
     bacaPegawaiResmi: bacaPegawaiResmi,
     periksa: periksa,
     buatSPD: buatSPD,
-    _uji: { daftarTanggal: daftarTanggal, terbilang: terbilang, tglPanjang: tglPanjang, namaDepan: namaDepan, bacaTanggal: bacaTanggal }
+    buatST: buatST,
+    _uji: { daftarTanggal: daftarTanggal, terbilang: terbilang, tglPanjang: tglPanjang, namaDepan: namaDepan, bacaTanggal: bacaTanggal, pisahTujuan: pisahTujuan, dataST: dataST }
   };
 });

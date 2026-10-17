@@ -7,7 +7,7 @@ const CACHE = "spd-moncongloe";
 const INTI = [
   "./", "index.html", "css/app.css", "js/app.js", "js/spd-core.js",
   "js/vendor/xlsx.mini.min.js", "js/vendor/jszip.min.js",
-  "assets/Template_Input_SPD.xlsx", "assets/master_spd.xlsx",
+  "assets/Template_Input_SPD.xlsx", "assets/master_spd.xlsx", "assets/master_st.docx",
   "contoh/Contoh_Input_Kelas_Ibu_Balita_Agustus_2026.xlsx",
   "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png"
 ];

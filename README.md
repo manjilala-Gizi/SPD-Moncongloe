@@ -1,6 +1,6 @@
 # Pembuat SPD – UPTD Puskesmas Moncongloe
 
-Aplikasi web (PWA) untuk membuat file **Surat Perjalanan Dinas (SPD)** dari template Excel.
+Aplikasi web (PWA) untuk membuat file **Surat Perjalanan Dinas (SPD)** dan **Surat Tugas (ST)** dari template Excel.
 Template masuk, file SPD keluar: satu sheet per SPD, A4 portrait, dua halaman timbal balik
 (depan kolom A–G, belakang kolom H–Q; halaman belakang tambahan di kolom R dst. bila kunjungan > 6).
 
@@ -14,7 +14,22 @@ Setelah dibuka sekali, aplikasi juga bisa dipakai tanpa internet dan bisa dipasa
 3. Unggah file ke aplikasi. Aplikasi memeriksa isinya:
    - **Perlu diperbaiki** (merah): proses dihentikan sampai template diperbaiki.
    - **Perhatikan** (kuning): boleh lanjut, tapi sebaiknya dicek.
-4. Klik **Buat & Unduh SPD**.
+4. Klik **Buat & Unduh SPD** dan/atau **Buat & Unduh Surat Tugas**.
+
+## Aturan pembuatan Surat Tugas
+
+Satu template = satu Surat Tugas (.docx) berisi semua pegawai, dari cetakan `assets/master_st.docx`.
+
+| Hal | Aturan |
+|---|---|
+| Nomor, tanggal, pejabat | Dari sheet Kegiatan: *Nomor Surat Tugas*, *Tanggal dikeluarkan*, *Nama/NIP Pejabat*, *Pengguna Anggaran* (jabatan penanda tangan). |
+| Dasar | Baris *Dasar Surat Tugas* di sheet Kegiatan. |
+| Untuk | `Melaksanakan Kegiatan` + *Maksud Perjalanan Dinas*. |
+| Tabel jadwal | Satu baris per kombinasi tanggal + tempat (tanpa duplikat), urut tanggal, nama hari otomatis. *Tempat Tujuan* dipisah di kata `Desa`: `Tokka Desa Bonto Marannu` → Posyandu `Tokka`, Desa `Bonto Marannu`. |
+| Lampiran | Satu baris per pegawai, urut Nomor SPD, berisi semua tempat kegiatannya. |
+
+Kop, logo, dan teks baku Surat Tugas bisa diubah langsung di `assets/master_st.docx` dengan Word, asalkan
+penanda seperti `{{NOMOR_ST}}`, `{{DASAR}}`, `{{J_NO}}`, `{{L_NAMA}}` tidak dihapus.
 
 ## Aturan pembuatan SPD
 
@@ -69,6 +84,7 @@ js/app.js               antarmuka
 js/spd-core.js          pembaca template, pemeriksa, pembuat SPD
 js/vendor/              SheetJS (baca Excel) & JSZip (tulis Excel)
 assets/master_spd.xlsx  cetakan SPD
+assets/master_st.docx   cetakan Surat Tugas
 assets/Template_Input_SPD.xlsx   template kosong untuk petugas
 contoh/                 contoh template terisi (ST Kelas Ibu Balita Agustus 2026)
 sw.js, manifest.webmanifest, icons/   bagian PWA (offline & pasang)

@@ -124,26 +124,28 @@
   }
 
   function cekSiap() {
-    $("btn-buat").disabled = !keadaan.hasil || keadaan.hasil.galat.length > 0;
+    $("btn-buat").disabled = $("btn-buat-st").disabled = !keadaan.hasil || keadaan.hasil.galat.length > 0;
     $("pesan-buat").textContent = "";
     $("pesan-buat").className = "pesan";
   }
 
   // ---------------------------------------------------------------- buat file
-  $("btn-buat").addEventListener("click", function () {
-    var btn = this, pesan = $("pesan-buat");
+  function unduh(data, nama, tipe) {
+    var a = el("a", { href: URL.createObjectURL(new Blob([data], { type: tipe })), download: nama });
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+  }
+  function buatFile(btn, opsi) {
+    var pesan = $("pesan-buat");
     btn.disabled = true;
-    pesan.textContent = "Menyusun file SPD…";
+    pesan.textContent = opsi.proses;
     pesan.className = "pesan";
-    ambil("assets/master_spd.xlsx")
-      .then(function (master) { return SPDCore.buatSPD(env, master, keadaan.hasil); })
+    ambil(opsi.master)
+      .then(function (master) { return opsi.buat(env, master, keadaan.hasil); })
       .then(function (r) {
-        var blob = new Blob([r.data], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-        var a = el("a", { href: URL.createObjectURL(blob), download: r.namaFile });
-        document.body.appendChild(a);
-        a.click();
-        setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
-        pesan.textContent = "Selesai: " + r.namaFile + " (" + r.sheet.length + " sheet) sudah diunduh.";
+        unduh(r.data, r.namaFile, opsi.tipe);
+        pesan.textContent = "Selesai: " + r.namaFile + " (" + opsi.ringkas(r) + ") sudah diunduh.";
         pesan.className = "pesan sukses";
       })
       .catch(function (e) {
@@ -151,6 +153,20 @@
         pesan.className = "pesan gagal";
       })
       .then(function () { btn.disabled = false; });
+  }
+  $("btn-buat").addEventListener("click", function () {
+    buatFile(this, {
+      proses: "Menyusun file SPD…", master: "assets/master_spd.xlsx", buat: SPDCore.buatSPD,
+      tipe: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      ringkas: function (r) { return r.sheet.length + " sheet"; }
+    });
+  });
+  $("btn-buat-st").addEventListener("click", function () {
+    buatFile(this, {
+      proses: "Menyusun Surat Tugas…", master: "assets/master_st.docx", buat: SPDCore.buatST,
+      tipe: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      ringkas: function (r) { return r.jadwal + " jadwal, " + r.pegawai + " pegawai"; }
+    });
   });
 
   // ---------------------------------------------------------------- PWA
