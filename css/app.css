@@ -138,14 +138,13 @@ summary .redup { font-weight: 400; margin-left: 8px; }
   padding: 12px 0; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; z-index: 4;
 }
 .bilah-aksi .pemisah { flex: 1; }
-.menu-unduh { position: relative; }
-.menu-unduh .daftar-unduh {
-  position: absolute; bottom: 110%; right: 0; background: var(--kartu); border: 1px solid var(--garis); border-radius: var(--radius);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, .12); min-width: 220px; padding: 6px; display: flex; flex-direction: column;
+.daftar-unduh {
+  position: fixed; z-index: 50; background: var(--kartu); border: 1px solid var(--garis); border-radius: var(--radius);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .18); min-width: 220px; padding: 6px; display: flex; flex-direction: column;
 }
 .daftar-unduh button { background: none; border: 0; text-align: left; padding: 9px 10px; border-radius: 6px; font: inherit; cursor: pointer; color: var(--teks); }
-.daftar-unduh button:hover { background: var(--hijau-muda); }
-.daftar-unduh.ke-bawah { bottom: auto; top: 110%; }
+.daftar-unduh button:hover, .daftar-unduh button:focus-visible { background: var(--hijau-muda); outline: none; }
+[aria-expanded="true"] { background: var(--hijau-muda); }
 
 .lencana { font-size: 11px; padding: 3px 8px; border-radius: 999px; background: var(--kuning-muda); color: var(--kuning); font-weight: 600; }
 .toast {

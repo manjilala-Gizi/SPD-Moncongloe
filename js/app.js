@@ -309,11 +309,15 @@
     });
   }
 
-  // Menu kecil berisi empat jenis file keluaran.
+  // Menu kecil berisi empat jenis file keluaran. Menu melayang di atas halaman (tidak terpotong tabel)
+  // dan membuka ke arah yang ruangnya cukup.
   function bukaMenuUnduh(btn, keBawah, pilih) {
+    var terbuka = document.querySelector(".daftar-unduh");
     tutupMenuUnduh();
-    var wadah = btn.parentNode, daftar = document.createElement("div");
-    daftar.className = "daftar-unduh" + (keBawah ? " ke-bawah" : "");
+    if (terbuka && terbuka._tombol === btn) return;
+    var daftar = document.createElement("div");
+    daftar.className = "daftar-unduh";
+    daftar._tombol = btn;
     Object.keys(KELUARAN).forEach(function (j) {
       var b = document.createElement("button");
       b.type = "button";
@@ -326,12 +330,26 @@
     semua.innerHTML = "<b>Semua (4 file)</b>";
     semua.addEventListener("click", function (e) { e.stopPropagation(); tutupMenuUnduh(); pilih("semua", btn); });
     daftar.appendChild(semua);
-    wadah.appendChild(daftar);
+    daftar.addEventListener("click", function (e) { e.stopPropagation(); });
+    document.body.appendChild(daftar);
+    var r = btn.getBoundingClientRect(), t = daftar.offsetHeight, l = daftar.offsetWidth, jarak = 6;
+    var bawah = window.innerHeight - r.bottom - jarak, atas = r.top - jarak;
+    var keBawahJadi = keBawah ? (bawah >= t || bawah >= atas) : !(atas >= t || atas >= bawah);
+    daftar.style.top = Math.max(8, keBawahJadi ? r.bottom + jarak : r.top - jarak - t) + "px";
+    daftar.style.left = Math.max(8, Math.min(r.right - l, window.innerWidth - l - 8)) + "px";
+    btn.setAttribute("aria-expanded", "true");
   }
   function tutupMenuUnduh() {
-    Array.prototype.forEach.call(document.querySelectorAll(".daftar-unduh"), function (d) { d.remove(); });
+    Array.prototype.forEach.call(document.querySelectorAll(".daftar-unduh"), function (d) {
+      if (d._tombol) d._tombol.removeAttribute("aria-expanded");
+      d.remove();
+    });
   }
   document.addEventListener("click", tutupMenuUnduh);
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") tutupMenuUnduh(); });
+  window.addEventListener("scroll", tutupMenuUnduh, true);
+  window.addEventListener("resize", tutupMenuUnduh);
+  window.addEventListener("hashchange", tutupMenuUnduh);
 
   // ---------------------------------------------------------------- daftar kegiatan
   function tampilDaftar() {
