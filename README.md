@@ -1,20 +1,57 @@
-# Pembuat SPD – UPTD Puskesmas Moncongloe
+# Aplikasi SPD Puskesmas Moncongloe
 
-Aplikasi web (PWA) untuk membuat file **Surat Perjalanan Dinas (SPD)** dan **Surat Tugas (ST)** dari template Excel.
-Template masuk, file SPD keluar: satu sheet per SPD, A4 portrait, dua halaman timbal balik
-(depan kolom A–G, belakang kolom H–Q; halaman belakang tambahan di kolom R dst. bila kunjungan > 6).
+Aplikasi web (PWA) berbentuk dashboard untuk membuat empat dokumen perjalanan dinas dari satu isian kegiatan:
 
-Semua proses berjalan di browser petugas. File **tidak dikirim ke server mana pun**.
-Setelah dibuka sekali, aplikasi juga bisa dipakai tanpa internet dan bisa dipasang di HP/laptop.
+1. **SPD** (Excel): satu sheet per pegawai, A4 portrait, dua halaman timbal balik.
+2. **Surat Tugas** (Word).
+3. **Lembar Penerimaan** uang transport / LPJ (Excel).
+4. **Lembar Verifikasi** (Excel).
+
+Kegiatan yang sudah dibuat **tersimpan**, jadi revisi cukup dibuka lagi dari menu **Daftar Kegiatan**
+tanpa mengunggah template. Data disimpan di Google Sheet "Database SPD Moncongloe" lewat Apps Script
+(lihat [apps-script/PANDUAN.md](apps-script/PANDUAN.md)). Selama Google Sheet belum dihubungkan,
+data disimpan di browser perangkat itu saja.
+
+## Menu
+
+| Menu | Isi |
+|---|---|
+| Dashboard | Ringkasan jumlah kegiatan, kunjungan, pegawai, dan kegiatan terbaru. |
+| Buat Kegiatan Baru | Form Surat Tugas + tabel Penugasan (satu baris = satu kunjungan). Bisa juga **Impor dari Excel** memakai template lama. |
+| Daftar Kegiatan | Semua kegiatan tersimpan: cari, buka untuk revisi, unduh ulang, hapus. |
+| Data Pegawai | Ubah, tambah, hapus pegawai. Dipakai untuk pilihan nama di Penugasan. |
+| Data Posyandu | Daftar posyandu dan desanya. Tempat Tujuan cukup diketik nama posyandunya (mis. `tokka`), lalu otomatis menjadi `Tokka Desa Bonto Marannu`, sehingga kolom Desa di Surat Tugas terisi. |
+| Pengaturan | Koneksi Google Sheet (URL Web App + PIN) dan nilai bawaan form (pejabat, PPTK, anggaran, verifikator). |
 
 ## Alur pakai
 
-1. Klik **Unduh Template** (selalu versi terbaru dari repo ini).
-2. Isi sheet **Kegiatan** (sekali per ST) dan **Penugasan** (satu baris = satu kunjungan).
-3. Unggah file ke aplikasi. Aplikasi memeriksa isinya:
-   - **Perlu diperbaiki** (merah): proses dihentikan sampai template diperbaiki.
-   - **Perhatikan** (kuning): boleh lanjut, tapi sebaiknya dicek.
-4. Klik **Buat & Unduh SPD** dan/atau **Buat & Unduh Surat Tugas**.
+1. **Buat Kegiatan Baru**: isi Nomor ST, tanggal, nama kegiatan, lalu baris penugasan
+   (No SPD, pegawai, tempat tujuan, tanggal). Tombol **Beri nomor otomatis** membagikan Nomor SPD
+   berurutan, satu nomor per pegawai.
+2. **Periksa**. Pesan merah wajib diperbaiki sebelum mengunduh; pesan kuning boleh dilewati.
+3. **Simpan**. Kegiatan yang belum lengkap tetap bisa disimpan sebagai draf.
+4. **Unduh ▴** lalu pilih salah satu dokumen atau **Semua (4 file)**.
+
+## Tanpa internet
+
+Setelah pernah dibuka sekali dalam keadaan online, aplikasi tetap bisa dipakai tanpa internet:
+daftar kegiatan, pegawai, dan posyandu memakai salinan terakhir dari Google Sheet, dan keempat file tetap
+bisa diunduh. Kegiatan yang disimpan saat offline diberi tanda **Belum tersinkron** dan dikirim otomatis
+ke Google Sheet begitu internet tersambung.
+
+Bila dua petugas mengubah kegiatan yang sama, aplikasi tidak menimpa diam-diam. Saat online, petugas
+ditanya apakah mau menimpa. Saat sinkron dari offline, versi perangkat disimpan sebagai kegiatan
+terpisah berakhiran "(salinan offline)".
+
+## Aturan Lembar Penerimaan dan Lembar Verifikasi
+
+| Hal | Aturan |
+|---|---|
+| Lembar Penerimaan | Satu baris per kunjungan, urut Nomor SPD lalu tanggal. Uang transport per kunjungan dari isian *Uang transport* (bawaan Rp 100.000). Jumlah memakai rumus SUM dan terbilang otomatis. Kop, Program, Kegiatan, Sub Kegiatan, PPTK, dan pejabat dari bagian *Anggaran* dan *Penanda tangan*. |
+| Lembar Verifikasi | Satu baris per tanggal + tempat (sama dengan jadwal Surat Tugas), berisi hari, tempat, dan nama petugas. Paling sedikit 8 baris seperti cetakan aslinya. Nama verifikator dari bagian *Verifikator*. |
+
+Cetakannya `assets/master_penerimaan.xlsx` dan `assets/master_verifikasi.xlsx`. Posisi sel yang diisi
+diatur di fungsi `buatPenerimaan` dan `buatVerifikasi` dalam `js/spd-core.js`.
 
 ## Aturan pembuatan Surat Tugas
 
@@ -58,6 +95,9 @@ penanda seperti `{{NOMOR_ST}}`, `{{DASAR}}`, `{{J_NO}}`, `{{L_NAMA}}` tidak diha
 
 ## Memperbarui daftar pegawai
 
+Setelah Google Sheet terhubung, cukup ubah lewat menu **Data Pegawai**. Cara di bawah hanya untuk
+template Excel yang dipakai fitur Impor dan sebagai daftar awal sebelum Google Sheet terhubung.
+
 1. Unduh `assets/Template_Input_SPD.xlsx` dari repo.
 2. Ubah sheet **Pegawai** di Excel (tambah baris, ubah pangkat, dan lain-lain), lalu simpan.
    NIP/NIK harus berupa **teks**: awali dengan tanda petik `'` bila Excel mengubahnya menjadi angka.
@@ -78,14 +118,23 @@ disesuaikan.
 ## Struktur folder
 
 ```
-index.html              halaman aplikasi
+index.html              halaman aplikasi (dashboard)
 css/app.css             tampilan
-js/app.js               antarmuka
-js/spd-core.js          pembaca template, pemeriksa, pembuat SPD
+js/app.js               antarmuka: menu, form kegiatan, data pegawai, pengaturan
+js/config.js            URL Web App Google Sheet untuk semua petugas
+js/simpan.js            penyimpanan data (Google Sheet atau browser)
+js/spd-core.js          pemeriksa dan pembuat SPD, Surat Tugas, Lembar Penerimaan, Lembar Verifikasi
 js/vendor/              SheetJS (baca Excel) & JSZip (tulis Excel)
 assets/master_spd.xlsx  cetakan SPD
 assets/master_st.docx   cetakan Surat Tugas
+assets/master_penerimaan.xlsx   cetakan Lembar Penerimaan (LPJ)
+assets/master_verifikasi.xlsx   cetakan Lembar Verifikasi
+assets/posyandu.json    daftar posyandu awal (sebelum Google Sheet terhubung)
+icons/logo-maros.png    logo di sidebar
+apps-script/            Code.gs, template Google Sheet, dan panduan pemasangannya
 assets/Template_Input_SPD.xlsx   template kosong untuk petugas
 contoh/                 contoh template terisi (ST Kelas Ibu Balita Agustus 2026)
 sw.js, manifest.webmanifest, icons/   bagian PWA (offline & pasang)
 ```
+
+Developed by Manjilala-Poltekkes Kemenkes Makassar/Persagi Sulsel.

@@ -33,9 +33,19 @@
   var SATUAN = ["", "Satu", "Dua", "Tiga", "Empat", "Lima", "Enam", "Tujuh",
     "Delapan", "Sembilan", "Sepuluh", "Sebelas"];
   function terbilang(n) {
+    n = Math.floor(n);
     if (n < 12) return SATUAN[n];
     if (n < 20) return SATUAN[n - 10] + " Belas";
     if (n < 100) return SATUAN[Math.floor(n / 10)] + " Puluh" + (n % 10 ? " " + SATUAN[n % 10] : "");
+    var besar = [[1e12, " Triliun"], [1e9, " Miliar"], [1e6, " Juta"], [1000, " Ribu"], [100, " Ratus"]];
+    for (var i = 0; i < besar.length; i++) {
+      var b = besar[i][0];
+      if (n >= b) {
+        var depan = Math.floor(n / b), sisa = n % b;
+        var kata = (depan === 1 && b <= 1000) ? (b === 1000 ? "Seribu" : "Seratus") : terbilang(depan) + besar[i][1];
+        return kata + (sisa ? " " + terbilang(sisa) : "");
+      }
+    }
     return String(n);
   }
 
@@ -664,10 +674,14 @@
     var jadwal = [];
     semua.forEach(function (v) {
       var kunci = kunciTgl(v.tgl) + "|" + v.tujuan.toLowerCase();
-      if (seen[kunci]) return;
-      seen[kunci] = true;
+      if (seen[kunci]) {
+        if (seen[kunci].petugas.indexOf(v.pegawai.nama) < 0) seen[kunci].petugas.push(v.pegawai.nama);
+        return;
+      }
       var t = pisahTujuan(v.tujuan);
-      jadwal.push({ hari: namaHari(v.tgl) + " / " + tglAngka(v.tgl), posyandu: t.posyandu, desa: t.desa });
+      seen[kunci] = { hari: namaHari(v.tgl) + " / " + tglAngka(v.tgl), posyandu: t.posyandu, desa: t.desa,
+        tujuan: v.tujuan, petugas: [v.pegawai.nama] };
+      jadwal.push(seen[kunci]);
     });
     var lampiran = hasilPeriksa.spd.map(function (o) {
       var tempat = [];
@@ -733,6 +747,229 @@
     return { data: data, namaFile: nama, jadwal: d.jadwal.length, pegawai: d.lampiran.length };
   }
 
+  // ------------------------------------------------------------ Lembar Penerimaan & Verifikasi
+  // Keduanya dibuat dari cetakan satu sheet (master_penerimaan.xlsx dan
+  // master_verifikasi.xlsx) yang disalin dari lembar asli Puskesmas. Baris
+  // tabel diperbanyak sesuai data; baris di bawahnya ikut digeser.
+
+  function tulisAngka(doc, sheetData, ref, n, rumus) {
+    tulisSel(doc, sheetData, ref, "");
+    var sel = cariSel(sheetData, ref);
+    if (rumus) {
+      var f = doc.createElementNS(NS, "f");
+      f.appendChild(doc.createTextNode(rumus));
+      sel.appendChild(f);
+    }
+    var v = doc.createElementNS(NS, "v");
+    v.appendChild(doc.createTextNode(String(n)));
+    sel.appendChild(v);
+  }
+  function cariSel(sheetData, ref) {
+    var r = /\d+$/.exec(ref)[0];
+    var rows = anakElemen(sheetData, "row");
+    for (var i = 0; i < rows.length; i++) {
+      if (rows[i].getAttribute("r") !== r) continue;
+      var cs = anakElemen(rows[i], "c");
+      for (var j = 0; j < cs.length; j++) if (cs[j].getAttribute("r") === ref) return cs[j];
+    }
+    return null;
+  }
+  function gantiNomorBaris(row, n) {
+    row.setAttribute("r", String(n));
+    anakElemen(row, "c").forEach(function (c) { c.setAttribute("r", c.getAttribute("r").replace(/\d+$/, String(n))); });
+  }
+  function kosongkanBaris(row) {
+    anakElemen(row, "c").forEach(function (c) {
+      while (c.firstChild) c.removeChild(c.firstChild);
+      c.removeAttribute("t");
+    });
+  }
+  // Menggeser baris >= dari sejauh jumlah, termasuk sel gabungan.
+  function geserBaris(doc, dari, jumlah) {
+    if (!jumlah) return;
+    var sheetData = doc.getElementsByTagName("sheetData")[0];
+    anakElemen(sheetData, "row").reverse().forEach(function (row) {
+      var r = +row.getAttribute("r");
+      if (r >= dari) gantiNomorBaris(row, r + jumlah);
+    });
+    var mc = doc.getElementsByTagName("mergeCell");
+    for (var i = 0; i < mc.length; i++) {
+      mc[i].setAttribute("ref", mc[i].getAttribute("ref").replace(/([A-Z]+)(\d+)/g, function (m, c, r) {
+        return c + (+r >= dari ? +r + jumlah : r);
+      }));
+    }
+  }
+  function ambilBaris(sheetData, r) {
+    return anakElemen(sheetData, "row").filter(function (x) { return +x.getAttribute("r") === r; })[0];
+  }
+  function aturDimensi(doc, ref) {
+    var dim = doc.getElementsByTagName("dimension")[0];
+    if (dim) dim.setAttribute("ref", ref);
+  }
+  function namaSheetAman(s) {
+    return (teks(s).replace(/[\\\/\?\*\[\]:']/g, "").slice(0, 31)) || "Lembar";
+  }
+  function terbilangRupiah(n) { return n ? terbilang(n) + " Rupiah" : "Nol Rupiah"; }
+
+  async function bukaLembar(env, masterBuf) {
+    var zip = await env.JSZip.loadAsync(masterBuf);
+    var xml = await zip.file("xl/worksheets/sheet1.xml").async("string");
+    var doc = new env.DOMParser().parseFromString(xml, "application/xml");
+    return { zip: zip, doc: doc, sheetData: doc.getElementsByTagName("sheetData")[0] };
+  }
+  async function tutupLembar(env, l, namaSheet, namaFileHasil) {
+    var out = new env.XMLSerializer().serializeToString(l.doc).replace(/^<\?xml[^>]*\?>\s*/, "");
+    l.zip.file("xl/worksheets/sheet1.xml", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' + out);
+    var wb = await l.zip.file("xl/workbook.xml").async("string");
+    var nama = namaSheetAman(namaSheet);
+    wb = wb.replace('<sheet name="Lembar"', '<sheet name="' + esc(nama) + '"')
+      .split("'Lembar'!").join("'" + esc(nama).replace(/'/g, "''") + "'!");
+    l.zip.file("xl/workbook.xml", wb);
+    var data = await l.zip.generateAsync({ type: "uint8array", compression: "DEFLATE" });
+    return { data: data, namaFile: namaFileHasil };
+  }
+  function namaFileLembar(awalan, k) {
+    return (awalan + " " + k.maksud + " " + BULAN[k.tgl.m - 1] + " " + k.tgl.y)
+      .replace(/[\\\/:\*\?"<>\|]/g, "-").replace(/\s+/g, " ").trim() + ".xlsx";
+  }
+  function angkaRupiah(v) {
+    var n = parseFloat(String(v || "0").replace(/[^\d,.-]/g, "").replace(/\.(?=\d{3})/g, "").replace(",", "."));
+    return isFinite(n) ? n : 0;
+  }
+
+  /** Lembar Penerimaan (Laporan Pertanggungjawaban): satu baris per kunjungan. */
+  async function buatPenerimaan(env, masterBuf, hasilPeriksa) {
+    if (hasilPeriksa.galat.length) throw new Error("Masih ada kesalahan pada data.");
+    var k = hasilPeriksa.kegiatan, l = await bukaLembar(env, masterBuf), sd = l.sheetData;
+    var uang = angkaRupiah(k.uangTransport);
+    var baris = [];
+    hasilPeriksa.spd.forEach(function (o) {
+      o.kunjungan.forEach(function (v) { baris.push({ spd: o, v: v }); });
+    });
+    var n = baris.length, AWAL = 17;
+    geserBaris(l.doc, AWAL + 1, n - 1);
+    var tpl = ambilBaris(sd, AWAL), sesudah = tpl.nextSibling;
+    for (var i = 1; i < n; i++) {
+      var baru = tpl.cloneNode(true);
+      gantiNomorBaris(baru, AWAL + i);
+      sd.insertBefore(baru, sesudah);
+    }
+    var tulis = function (ref, v) { tulisSel(l.doc, sd, ref, v); };
+    tulis("C9", ": " + (k.program || ""));
+    tulis("C10", ": " + (k.kegiatanAnggaran || ""));
+    tulis("C11", ": " + (k.subKegiatan || ""));
+    tulis("C12", ": " + k.maksud);
+    tulis("C13", ": " + k.tempatKeluar);
+    baris.forEach(function (b, i) {
+      var r = AWAL + i, peg = b.spd.pegawai, tgl = tglAngka(b.v.tgl);
+      kosongkanBaris(ambilBaris(sd, r));
+      tulisAngka(l.doc, sd, "A" + r, i + 1);
+      tulis("B" + r, k.nomorST || "");
+      tulis("C" + r, tglST(k.tgl));
+      tulisAngka(l.doc, sd, "D" + r, 1);
+      tulis("E" + r, b.spd.nomor);
+      tulis("F" + r, peg.nama);
+      tulis("G" + r, peg.jabatan || "-");
+      tulis("H" + r, tgl);
+      tulis("I" + r, tgl);
+      tulisAngka(l.doc, sd, "J" + r, uang);
+      tulisAngka(l.doc, sd, "K" + r, uang);
+      tulis("L" + r, k.maksud);
+      tulis("M" + r, b.v.tujuan);
+      tulis("N" + r, k.subKegiatan || "");
+      tulisAngka(l.doc, sd, "O" + r, i + 1);
+    });
+    var akhir = AWAL + n - 1, total = uang * n, g = n - 1;
+    tulisAngka(l.doc, sd, "K" + (akhir + 1), total, "SUM(K" + AWAL + ":K" + akhir + ")");
+    tulis("A" + (akhir + 2), "Terbilang : " + terbilangRupiah(total));
+    tulis("N" + (21 + g), k.tempatKeluar + ", ");
+    tulis("B" + (22 + g), k.penggunaAnggaran);
+    tulis("B" + (24 + g), k.pejabatNama);
+    tulis("B" + (25 + g), "NIP. " + k.pejabatNip);
+    tulis("N" + (24 + g), k.pptkNama || "");
+    tulis("N" + (25 + g), k.pptkNip ? "NIP. " + k.pptkNip : "");
+    aturDimensi(l.doc, "A1:O" + (28 + g));
+    var r = await tutupLembar(env, l, k.maksud, namaFileLembar("Lembar Penerimaan", k));
+    r.baris = n; r.total = total;
+    return r;
+  }
+
+  /** Lembar Verifikasi: satu baris per tanggal + lokasi, petugas digabung. */
+  async function buatVerifikasi(env, masterBuf, hasilPeriksa) {
+    if (hasilPeriksa.galat.length) throw new Error("Masih ada kesalahan pada data.");
+    var k = hasilPeriksa.kegiatan, l = await bukaLembar(env, masterBuf), sd = l.sheetData;
+    var jadwal = dataST(hasilPeriksa).jadwal;
+    var AWAL = 8, TPL_AKHIR = 27, m = Math.max(jadwal.length, 8);
+    var tpl = {};
+    for (var r = AWAL; r <= TPL_AKHIR; r++) tpl[r] = ambilBaris(sd, r);
+    var baru = [];
+    for (var i = 0; i < m; i++) {
+      var asal = i === m - 1 ? tpl[TPL_AKHIR] : (AWAL + i < TPL_AKHIR ? tpl[AWAL + i] : tpl[TPL_AKHIR - 1]);
+      var b = asal.cloneNode(true);
+      gantiNomorBaris(b, AWAL + i);
+      kosongkanBaris(b);
+      baru.push(b);
+    }
+    for (r = AWAL; r <= TPL_AKHIR; r++) sd.removeChild(tpl[r]);
+    baru.forEach(function (b) { sd.appendChild(b); });
+    var mc = l.doc.getElementsByTagName("mergeCell");
+    for (i = 0; i < mc.length; i++) {
+      var ref = mc[i].getAttribute("ref");
+      if (ref === "A8:A12" || ref === "B8:B12") mc[i].setAttribute("ref", ref.replace("12", String(AWAL + m - 1)));
+    }
+    var tulis = function (ref, v) { tulisSel(l.doc, sd, ref, v); };
+    tulis("C3", ": " + BULAN[k.tgl.m - 1].toUpperCase() + " " + k.tgl.y);
+    tulis("C4", ": " + (k.programVerifikasi || ""));
+    tulisAngka(l.doc, sd, "A8", 1);
+    tulis("B8", k.maksud);
+    tulis("E8", k.nomorST || "");
+    tulis("E10", "Tanggal " + tglST(k.tgl));
+    jadwal.forEach(function (j, i) {
+      var r = AWAL + i;
+      tulis("C" + r, j.hari);
+      tulis("D" + r, j.tujuan);
+      tulis("F" + r, j.petugas.join("\n"));
+      if (j.petugas.length > 2) {
+        var row = ambilBaris(sd, r);
+        row.setAttribute("ht", String(13.5 * j.petugas.length));
+        row.setAttribute("customHeight", "1");
+      }
+    });
+    tulis("H11", k.verifKelengkapan || "");
+    tulis("J11", k.verifPersiapan || "");
+    tulis("L11", k.verifPptkUkm || "");
+    tulis("N11", k.verifBendahara || "");
+    tulis("N14", k.verifPjKeuangan || "");
+    tulis("P11", k.pejabatNama);
+    aturDimensi(l.doc, "A1:P" + (AWAL + m - 1));
+    var hasil = await tutupLembar(env, l, k.maksud, namaFileLembar("Lembar Verifikasi", k));
+    hasil.baris = jadwal.length;
+    return hasil;
+  }
+
+  // ------------------------------------------------------------ data dari penyimpanan
+  // Kegiatan yang tersimpan (Google Sheet) diubah ke bentuk yang sama dengan
+  // hasil bacaTemplate, supaya pemeriksaan dan pembuatan file tetap satu jalur.
+  function tglDariIso(s) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(teks(s));
+    return m ? new Date(+m[1], +m[2] - 1, +m[3]) : (teks(s) || null);
+  }
+  function dariRekaman(kegiatan, penugasan, pegawai) {
+    var k = {};
+    Object.keys(kegiatan).forEach(function (x) { k[x] = teks(kegiatan[x]); });
+    k.tglKeluarRaw = tglDariIso(kegiatan.tglKeluar);
+    return {
+      kegiatan: k,
+      pegawai: pegawai.map(function (p, i) {
+        return { nama: teks(p.nama), nip: teks(p.nip).replace(/\s+/g, ""), pangkat: teks(p.pangkat), jabatan: teks(p.jabatan), baris: i + 2 };
+      }),
+      penugasan: penugasan.map(function (r, i) {
+        return { baris: r.baris || i + 1, nomor: teks(r.nomor), nama: teks(r.nama), tujuan: teks(r.tujuan), tanggalRaw: tglDariIso(r.tanggal) };
+      }),
+      catatan: []
+    };
+  }
+
   /** Nama sheet yang akan dipakai, untuk ditampilkan sebelum file dibuat. */
   function pratinjauNamaSheet(spd) {
     var dipakai = {};
@@ -747,6 +984,10 @@
     periksa: periksa,
     buatSPD: buatSPD,
     buatST: buatST,
+    buatPenerimaan: buatPenerimaan,
+    buatVerifikasi: buatVerifikasi,
+    dariRekaman: dariRekaman,
+    terbilang: terbilang,
     _uji: { daftarTanggal: daftarTanggal, terbilang: terbilang, tglPanjang: tglPanjang, namaDepan: namaDepan, bacaTanggal: bacaTanggal, pisahTujuan: pisahTujuan, dataST: dataST }
   };
 });
