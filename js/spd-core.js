@@ -27,7 +27,56 @@
     if (v === null || v === undefined) return "";
     return String(v).replace(/\s+/g, " ").trim();
   }
-  function kunciNama(v) { return teks(v).toLowerCase(); }
+  // Pembanding nama: huruf dan angka saja, supaya beda kapital, spasi, atau titik
+  // pada gelar tetap dianggap orang yang sama.
+  function kunciNama(v) { return teks(v).toLowerCase().replace(/[^a-z0-9]/g, ""); }
+
+  // ------------------------------------------------------------ penulisan nama
+  // Gelar dengan ejaan baku. Kunci: huruf kecil tanpa spasi.
+  var GELAR = {
+    "skm": "SKM", "skm.": "SKM", "s.km": "S.KM", "s.km.": "S.KM", "m.kes": "M.Kes", "m.kes.": "M.Kes",
+    "m.km": "M.KM", "mm.kes": "M.M.Kes", "m.m.kes": "M.M.Kes", "m.mkes": "M.M.Kes",
+    "s.ked": "S.Ked", "s.kg": "S.Kg", "s.kg.mh": "S.Kg, M.H.", "m.h": "M.H.", "m.h.": "M.H.",
+    "s.kep": "S.Kep.", "s.kep.": "S.Kep.", "ns": "Ns.", "ns.": "Ns.", ".ns": "Ns.", "s.kep.ns": "S.Kep., Ns.",
+    "s.st": "S.ST", "s.sit": "S.SiT", "s.sit.": "S.SiT", "s.si": "S.Si", "m.si": "M.Si",
+    "s.farm": "S.Farm", "s.farm.": "S.Farm", "apt": "Apt.", "apt.": "Apt.", "se": "SE",
+    "s.gz": "S.Gz", "s.tr.gz": "S.Tr.Gz", "s.tr.farm": "S.Tr.Farm", "s.tr.kes": "S.Tr.Kes",
+    "a.md": "A.Md.", "a.md.": "A.Md.", "anakes": "Anakes",
+    "a.md.keb": "A.Md.Keb", "amd.keb": "A.Md.Keb", "a.md.kep": "A.Md.Kep", "amd.kep": "A.Md.Kep",
+    "a.md.farm": "A.Md.Farm", "amd.farm": "A.Md.Farm", "a.md.gz": "A.Md.Gz", "amd.gz": "A.Md.Gz",
+    "a.md.kg": "A.Md.KG", "a.md.rmik": "A.Md.RMIK", "a.md.ak": "A.Md.AK",
+    "amak": "AMAK", "amk": "AMK", "amkg": "AMKG"
+  };
+  var GELAR_DEPAN = { dr: "dr.", drg: "drg.", apt: "apt.", bd: "Bd.", ns: "Ns.", hj: "Hj." };
+  function bakuGelar(g) {
+    var k = teks(g).toLowerCase().replace(/\s+/g, "");
+    return GELAR[k] || GELAR[k.replace(/\.$/, "")] || GELAR[k + "."] || null;
+  }
+  function kapitalAwal(s) {
+    return s.replace(/\.(?=[A-Za-z]{2})/g, ". ").split(" ").map(function (w) {
+      if (/^[A-Z]{2}$/.test(w)) return w;          // inisial dua huruf, mis. "AR"
+      return w.split("-").map(function (b) { return b.charAt(0).toUpperCase() + b.slice(1).toLowerCase(); }).join("-");
+    }).join(" ");
+  }
+  /** "RAHMIYATI R, S.Tr.Gz" -> "Rahmiyati R, S.Tr.Gz"; gelar ditulis dengan ejaan baku. */
+  function rapikanNama(nama) {
+    var s = teks(nama).replace(/\s+/g, " ").replace(/A\.\s*Md\s*,\s*Keb/i, "A.Md.Keb");
+    if (!s) return s;
+    var depan = [], m;
+    while ((m = /^(drg|dr|apt|bd|ns|hj)\b\.?\s*,?\s*/i.exec(s)) && s.length > m[0].length) {
+      depan.push(GELAR_DEPAN[m[1].toLowerCase()]);
+      s = s.slice(m[0].length);
+    }
+    // Gelar belakang dimulai dari koma pertama yang sisanya semua gelar.
+    var bagian = s.split(","), inti = s, belakang = [];
+    for (var i = 1; i < bagian.length; i++) {
+      var g = bagian.slice(i).map(bakuGelar);
+      if (g.every(Boolean)) { inti = bagian.slice(0, i).join(","); belakang = g; break; }
+    }
+    if (!belakang.length && (m = /^(.*\S)\.\s+(\S+)$/.exec(s)) && bakuGelar(m[2])) { inti = m[1]; belakang = [bakuGelar(m[2])]; }
+    inti = kapitalAwal(inti.replace(/\s*,\s*/g, ", ").trim());
+    return (depan.length ? depan.join(" ") + " " : "") + inti + (belakang.length ? ", " + belakang.join(", ") : "");
+  }
   function pad2(n) { return (n < 10 ? "0" : "") + n; }
 
   var SATUAN = ["", "Satu", "Dua", "Tiga", "Empat", "Lima", "Enam", "Tujuh",
@@ -110,13 +159,14 @@
   ];
 
   // Nomor SPD lengkap = angka urut / kode / bulan romawi / tahun.
-  // Bulan & tahun diambil dari Tanggal dikeluarkan (SPD).
+  // Bulan & tahun diambil dari tanggal SPD (t), bawaannya Tanggal dikeluarkan.
   var ROMAWI = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
-  function nomorLengkap(isian, k) {
+  function nomorLengkap(isian, k, t) {
+    t = t || k.tgl;
     var s = teks(isian);
     if (!s || s.indexOf("/") >= 0) return s;          // sudah lengkap: pakai apa adanya
     if (/^\d+(\.0+)?$/.test(s)) s = String(parseInt(s, 10) === 0 ? s : s.replace(/\.0+$/, ""));
-    return s + "/" + k.kodeSPD + "/" + ROMAWI[k.tgl.m - 1] + "/" + k.tgl.y;
+    return s + "/" + k.kodeSPD + "/" + ROMAWI[t.m - 1] + "/" + t.y;
   }
   var WAJIB_KEGIATAN = {
     tglKeluar: "Tanggal dikeluarkan (SPD)", tempatKeluar: "Tempat dikeluarkan",
@@ -210,6 +260,9 @@
   function periksa(data, pegawaiResmi) {
     var galat = [], peringatan = data.catatan.slice();
     var k = data.kegiatan;
+    ["pejabatNama", "pptkNama", "verifKelengkapan", "verifPersiapan", "verifPptkUkm", "verifBendahara", "verifPjKeuangan"]
+      .forEach(function (x) { if (k[x]) k[x] = rapikanNama(k[x]); });
+    data.pegawai.forEach(function (p) { p.nama = rapikanNama(p.nama); });
 
     Object.keys(WAJIB_KEGIATAN).forEach(function (kunci) {
       if (!k[kunci]) galat.push("Sheet Kegiatan: '" + WAJIB_KEGIATAN[kunci] + "' belum diisi.");
@@ -224,6 +277,22 @@
     var tk = bacaTanggal(k.tglKeluarRaw);
     if (k.tglKeluar && !tk.tgl) galat.push("Sheet Kegiatan: Tanggal dikeluarkan bukan tanggal yang valid.");
     k.tgl = tk.tgl;
+    // Tanggal SPD: bawaan untuk semua SPD; kosong = sama dengan tanggal Surat Tugas.
+    var ts = bacaTanggal(k.tglSPDRaw);
+    if (k.tglSPDRaw && !ts.tgl) galat.push("Tanggal SPD bukan tanggal yang valid.");
+    k.tglSpd = ts.tgl || k.tgl;
+    // Tgl SPD per pegawai: cukup diisi di salah satu baris dengan Nomor SPD yang sama.
+    var tglSpdNomor = {};
+    data.penugasan.forEach(function (r) {
+      var t = bacaTanggal(r.tglSPDRaw).tgl, no = teks(r.nomor);
+      if (r.tglSPDRaw && !t) { galat.push("Penugasan baris " + r.baris + ": Tgl SPD bukan tanggal yang valid."); return; }
+      if (!t || !no) return;
+      var ada = tglSpdNomor[no];
+      if (ada && kunciTgl(ada.tgl) !== kunciTgl(t)) {
+        galat.push("Nomor SPD " + no + " punya dua Tgl SPD berbeda (" + tglPanjang(ada.tgl) + " di baris " + ada.baris +
+          ", " + tglPanjang(t) + " di baris " + r.baris + "). Satu SPD hanya punya satu tanggal.");
+      } else if (!ada) tglSpdNomor[no] = { tgl: t, baris: r.baris };
+    });
 
     var petaPegawai = {};
     data.pegawai.forEach(function (p) {
@@ -248,8 +317,9 @@
       if (!t.tgl) masalah.push(t.salah ? "Tanggal tidak dikenali ('" + teks(r.tanggalRaw) + "')" : "Tanggal kosong");
       else if (t.sebagaiTeks) peringatan.push(lok + "tanggal diketik sebagai teks, dibaca sebagai " + tglPanjang(t.tgl) + ".");
       if (masalah.length) { galat.push(lok + masalah.join("; ") + "."); return; }
-      if (k.tgl && kunciTgl(t.tgl) < kunciTgl(k.tgl)) {
-        peringatan.push(lok + "kunjungan " + tglPanjang(t.tgl) + " lebih awal dari tanggal SPD dikeluarkan (" + tglPanjang(k.tgl) + ").");
+      var tSpd = tglSpdNomor[r.nomor] ? tglSpdNomor[r.nomor].tgl : k.tglSpd;
+      if (tSpd && kunciTgl(t.tgl) < kunciTgl(tSpd)) {
+        peringatan.push(lok + "kunjungan " + tglPanjang(t.tgl) + " lebih awal dari tanggal SPD dikeluarkan (" + tglPanjang(tSpd) + ").");
       }
       if (r.nomor.indexOf("/") < 0) {
         if (!/^\d+(\.0+)?$/.test(r.nomor)) {
@@ -258,7 +328,7 @@
         }
         adaNomorPendek = true;
       }
-      kunjungan.push({ baris: r.baris, nomor: k.tgl ? nomorLengkap(r.nomor, k) : r.nomor, pegawai: peg, tujuan: r.tujuan, tgl: t.tgl });
+      kunjungan.push({ baris: r.baris, nomor: tSpd ? nomorLengkap(r.nomor, k, tSpd) : r.nomor, pegawai: peg, tujuan: r.tujuan, tgl: t.tgl, tglSpd: tSpd });
     });
     if (adaNomorPendek && !k.kodeSPD) {
       galat.push("Sheet Kegiatan: 'Kode Nomor SPD' belum diisi (mis. SPD/PKM-ML). Unduh template terbaru bila baris ini belum ada.");
@@ -307,7 +377,7 @@
       if (!peg.jabatan) peringatan.push("Sheet Pegawai: Jabatan " + peg.nama + " kosong.");
 
       var halBelakang = Math.ceil(v.length / MAKS_KUNJUNGAN);
-      spd.push({ nomor: no, pegawai: peg, kunjungan: v, halamanBelakang: halBelakang });
+      spd.push({ nomor: no, pegawai: peg, kunjungan: v, halamanBelakang: halBelakang, tglSpd: v[0].tglSpd });
       if (halBelakang > 1) {
         peringatan.push(peg.nama + " punya " + v.length + " kunjungan: tetap satu SPD (No. " + no + ") dengan " +
           halBelakang + " halaman belakang, jadi sheet ini dicetak " + (halBelakang + 1) + " halaman.");
@@ -374,7 +444,7 @@
     c.D37 = k.kodeRekening;
     c.D38 = k.keterangan;
     c.G39 = ": " + k.tempatKeluar;
-    c.G40 = ": " + tglPanjang(k.tgl);
+    c.G40 = ": " + tglPanjang(item.tglSpd || k.tgl);
     c.F42 = k.penggunaAnggaran;
     c.F47 = k.pejabatNama;
     c.F48 = nipPejabat;
@@ -828,6 +898,21 @@
     var data = await l.zip.generateAsync({ type: "uint8array", compression: "DEFLATE" });
     return { data: data, namaFile: namaFileHasil };
   }
+  // Menambah salinan gaya sel (styles.xml) dengan perataan tengah; hasil = nomor gaya baru.
+  async function tambahGayaTengah(env, zip, s) {
+    var xml = await zip.file("xl/styles.xml").async("string");
+    var doc = new env.DOMParser().parseFromString(xml, "application/xml");
+    var xfs = doc.getElementsByTagName("cellXfs")[0], daftar = anakElemen(xfs, "xf");
+    var baru = daftar[+s || 0].cloneNode(true), al = anakElemen(baru, "alignment")[0];
+    if (!al) { al = doc.createElementNS(NS, "alignment"); baru.appendChild(al); }
+    al.setAttribute("horizontal", "center");
+    baru.setAttribute("applyAlignment", "1");
+    xfs.appendChild(baru);
+    xfs.setAttribute("count", String(daftar.length + 1));
+    zip.file("xl/styles.xml", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+      new env.XMLSerializer().serializeToString(doc).replace(/^<\?xml[^>]*\?>\s*/, ""));
+    return String(daftar.length);
+  }
   function namaFileLembar(awalan, k) {
     return (awalan + " " + k.maksud + " " + BULAN[k.tgl.m - 1] + " " + k.tgl.y)
       .replace(/[\\\/:\*\?"<>\|]/g, "-").replace(/\s+/g, " ").trim() + ".xlsx";
@@ -855,6 +940,7 @@
       sd.insertBefore(baru, sesudah);
     }
     var tulis = function (ref, v) { tulisSel(l.doc, sd, ref, v); };
+    var gayaTengah = await tambahGayaTengah(env, l.zip, cariSel(sd, "O" + AWAL).getAttribute("s"));
     tulis("C9", ": " + (k.program || ""));
     tulis("C10", ": " + (k.kegiatanAnggaran || ""));
     tulis("C11", ": " + (k.subKegiatan || ""));
@@ -878,6 +964,8 @@
       tulis("M" + r, b.v.tujuan);
       tulis("N" + r, k.subKegiatan || "");
       tulisAngka(l.doc, sd, "O" + r, i + 1);
+      // Kolom Tanda Tangan: nomor ganjil rata kiri, genap di tengah.
+      if (i % 2) cariSel(sd, "O" + r).setAttribute("s", gayaTengah);
     });
     var akhir = AWAL + n - 1, total = uang * n, g = n - 1;
     tulisAngka(l.doc, sd, "K" + (akhir + 1), total, "SUM(K" + AWAL + ":K" + akhir + ")");
@@ -958,13 +1046,15 @@
     var k = {};
     Object.keys(kegiatan).forEach(function (x) { k[x] = teks(kegiatan[x]); });
     k.tglKeluarRaw = tglDariIso(kegiatan.tglKeluar);
+    k.tglSPDRaw = tglDariIso(kegiatan.tglSPD);
     return {
       kegiatan: k,
       pegawai: pegawai.map(function (p, i) {
         return { nama: teks(p.nama), nip: teks(p.nip).replace(/\s+/g, ""), pangkat: teks(p.pangkat), jabatan: teks(p.jabatan), baris: i + 2 };
       }),
       penugasan: penugasan.map(function (r, i) {
-        return { baris: r.baris || i + 1, nomor: teks(r.nomor), nama: teks(r.nama), tujuan: teks(r.tujuan), tanggalRaw: tglDariIso(r.tanggal) };
+        return { baris: r.baris || i + 1, nomor: teks(r.nomor), nama: teks(r.nama), tujuan: teks(r.tujuan), tanggalRaw: tglDariIso(r.tanggal),
+          tglSPDRaw: tglDariIso(r.tglSPD) };
       }),
       catatan: []
     };
@@ -988,6 +1078,8 @@
     buatVerifikasi: buatVerifikasi,
     dariRekaman: dariRekaman,
     terbilang: terbilang,
+    rapikanNama: rapikanNama,
+    kunciNama: kunciNama,
     _uji: { daftarTanggal: daftarTanggal, terbilang: terbilang, tglPanjang: tglPanjang, namaDepan: namaDepan, bacaTanggal: bacaTanggal, pisahTujuan: pisahTujuan, dataST: dataST }
   };
 });

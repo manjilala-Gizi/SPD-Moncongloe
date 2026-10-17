@@ -13,12 +13,12 @@ var SHEET = { PENGATURAN: "Pengaturan", PEGAWAI: "Pegawai", POSYANDU: "Posyandu"
 
 var KOLOM_PEGAWAI = ["nama", "nip", "pangkat", "jabatan"];
 var KOLOM_POSYANDU = ["nama", "desa"];
-var KOLOM_KEGIATAN = ["id", "dibuat", "diubah", "nomorST", "tglKeluar", "maksud", "dasar", "kodeSPD",
+var KOLOM_KEGIATAN = ["id", "dibuat", "diubah", "nomorST", "tglKeluar", "tglSPD", "maksud", "dasar", "kodeSPD",
   "tempatKeluar", "penggunaAnggaran", "tingkatBiaya", "alatAngkut", "tempatBerangkat", "skpd", "kodeRekening",
   "keterangan", "pejabatNama", "pejabatNip", "program", "kegiatanAnggaran", "subKegiatan", "uangTransport",
   "programVerifikasi", "pptkNama", "pptkNip", "verifKelengkapan", "verifPersiapan", "verifPptkUkm",
   "verifBendahara", "verifPjKeuangan"];
-var KOLOM_PENUGASAN = ["kegiatanId", "nomor", "nama", "tujuan", "tanggal"];
+var KOLOM_PENUGASAN = ["kegiatanId", "nomor", "nama", "tujuan", "tanggal", "tglSPD"];
 
 function doGet() {
   return json({ ok: true, pesan: "API SPD Moncongloe aktif. Buka aplikasi untuk memakainya." });
@@ -108,7 +108,7 @@ function simpanKegiatan(ss, kegiatan, penugasan, paksa) {
   var lain = bacaTabel(shP, KOLOM_PENUGASAN).filter(function (x) { return x.kegiatanId !== id; });
   penugasan.forEach(function (p) {
     lain.push({ kegiatanId: id, nomor: String(p.nomor || ""), nama: String(p.nama || ""),
-      tujuan: String(p.tujuan || ""), tanggal: String(p.tanggal || "") });
+      tujuan: String(p.tujuan || ""), tanggal: String(p.tanggal || ""), tglSPD: String(p.tglSPD || "") });
   });
   tulisTabel(shP, KOLOM_PENUGASAN, lain);
   return { ok: true, id: id, diubah: sekarang };

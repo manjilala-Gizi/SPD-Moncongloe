@@ -10,20 +10,21 @@
   var BAWAAN = {
     tempatKeluar: "Moncongloe", penggunaAnggaran: "Kepala UPTD Puskesmas Moncongloe", tingkatBiaya: "Biasa",
     alatAngkut: "Kendaraan Roda Dua", tempatBerangkat: "UPTD Puskesmas Moncongloe", skpd: "UPTD Puskesmas Moncongloe",
-    kodeRekening: "1 02 02 2.02 0015", keterangan: "-", pejabatNama: "Muliati, SKM, M.Kes.", pejabatNip: "197811302015082001",
+    kodeRekening: "1 02 02 2.02 0015", keterangan: "-", pejabatNama: "Muliati, SKM, M.Kes", pejabatNip: "197811302015082001",
     kodeSPD: "SPD/PKM-ML",
     dasar: "Berdasarkan Rencana Pelaksanaan Kegiatan Tahun 2026 Bersumber Dana Biaya Operasional Kesehatan (BOK)",
     program: "1.02.02. - PROGRAM PEMENUHAN UPAYA KESEHATAN PERORANGAN DAN UPAYA KESEHATAN MASYARAKAT",
     kegiatanAnggaran: "1.02.02.2.02 - Penyediaan Layanan Kesehatan untuk UKM dan UKP Rujukan Tingkat Daerah Kabupaten/Kota",
     subKegiatan: "1 02 02 2.02 0015 Pengelolaan Pelayanan Kesehatan Gizi Masyarakat",
-    uangTransport: "100000", programVerifikasi: "GIZI", pptkNama: "Roslin Salima, S.KM., M.Kes.", pptkNip: "198203292009032006",
-    verifKelengkapan: "SULHIYAH MAHMUD, SKM, M.Kes", verifPersiapan: "SITTI NURHAYATI, A.Md.RMIK",
-    verifPptkUkm: "Ns.RIDWAN RAHMAN , S.Kep", verifBendahara: "KAMELIAH, SKM", verifPjKeuangan: "Roslin Salima, S.KM., M.Kes."
+    uangTransport: "100000", programVerifikasi: "GIZI", pptkNama: "Roslin Salima, S.KM, M.Kes", pptkNip: "198203292009032006",
+    verifKelengkapan: "Sulhiyah Mahmud, SKM, M.Kes", verifPersiapan: "Sitti Nurhayati, A.Md.RMIK",
+    verifPptkUkm: "Ns. Ridwan Rahman, S.Kep.", verifBendahara: "Kameliah, SKM", verifPjKeuangan: "Roslin Salima, S.KM, M.Kes"
   };
 
   // Isian form kegiatan, dikelompokkan per bagian. [kunci, label, jenis]
   var BAGIAN_ST = [
-    ["nomorST", "Nomor Surat Tugas", "text"], ["tglKeluar", "Tanggal dikeluarkan (ST & SPD)", "date"],
+    ["nomorST", "Nomor Surat Tugas", "text"], ["tglKeluar", "Tanggal Surat Tugas", "date"],
+    ["tglSPD", "Tanggal SPD (kosongkan bila sama dengan ST)", "date"],
     ["maksud", "Nama kegiatan / Maksud perjalanan dinas", "text"], ["kodeSPD", "Kode Nomor SPD", "text"],
     ["dasar", "Dasar Surat Tugas", "textarea"]
   ];
@@ -49,7 +50,7 @@
   ];
   var SEMUA_BAGIAN = BAGIAN_ST.concat(BAGIAN_SPD, BAGIAN_TTD, BAGIAN_ANGGARAN, BAGIAN_VERIF);
   var KUNCI_PENGATURAN = SEMUA_BAGIAN.map(function (x) { return x[0]; }).filter(function (k) {
-    return ["nomorST", "tglKeluar", "maksud"].indexOf(k) < 0;
+    return ["nomorST", "tglKeluar", "tglSPD", "maksud"].indexOf(k) < 0;
   });
 
   var XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
@@ -109,7 +110,7 @@
   function kunciNama(s) { return String(s || "").toLowerCase().replace(/[^a-z0-9]/g, ""); }
   function petaPegawai() {
     var p = {};
-    keadaan.pegawai.forEach(function (x) { p[String(x.nama).trim().toLowerCase()] = x; });
+    keadaan.pegawai.forEach(function (x) { p[kunciNama(x.nama)] = x; });
     return p;
   }
   // "tokka", "Tokka", atau "tokka desa bonto marannu" -> "Tokka Desa Bonto Marannu".
@@ -148,7 +149,9 @@
       else tugas.push(ambilFile("assets/posyandu.json").then(function (buf) {
         keadaan.posyandu = JSON.parse(new TextDecoder().decode(buf));
       }));
-      return Promise.all(tugas.map(function (t) { return t.catch(function () { /* tetap lanjut */ }); }));
+      return Promise.all(tugas.map(function (t) { return t.catch(function () { /* tetap lanjut */ }); })).then(function () {
+        keadaan.pegawai = keadaan.pegawai.map(function (p) { return Object.assign({}, p, { nama: SPDCore.rapikanNama(p.nama) }); });
+      });
     };
     return s.muat().then(function (r) {
       keadaan.pengaturan = Object.assign({}, BAWAAN, r.pengaturan || {});
@@ -359,10 +362,10 @@
   function formBaru() {
     var k = {};
     KUNCI_PENGATURAN.forEach(function (x) { k[x] = keadaan.pengaturan[x] || ""; });
-    k.id = ""; k.nomorST = ""; k.maksud = ""; k.tglKeluar = hariIni();
+    k.id = ""; k.nomorST = ""; k.maksud = ""; k.tglKeluar = hariIni(); k.tglSPD = "";
     return { kegiatan: k, penugasan: [baris(), baris(), baris()] };
   }
-  function baris(asal) { return Object.assign({ nomor: "", nama: "", tujuan: "", tanggal: "" }, asal || {}); }
+  function baris(asal) { return Object.assign({ nomor: "", nama: "", tujuan: "", tanggal: "", tglSPD: "" }, asal || {}); }
 
   function bukaForm(id) {
     keadaan.berubah = false;
@@ -401,7 +404,8 @@
       '<div class="baris-tombol"><input id="no-awal" type="number" placeholder="No SPD awal" style="width:130px">' +
       '<button class="tombol tombol-hantu tombol-kecil" id="btn-nomor">Beri nomor otomatis</button></div></div>' +
       '<div class="wadah-tabel"><table class="tabel-tugas"><thead><tr><th>#</th><th class="kol-no">No SPD</th><th>Pegawai</th>' +
-      '<th>Tempat tujuan</th><th class="kol-tgl">Tanggal</th><th></th></tr></thead><tbody id="isi-tugas"></tbody></table></div>' +
+      '<th>Tempat tujuan</th><th class="kol-tgl">Tanggal kunjungan</th>' +
+      '<th class="kol-tgl" title="Kosongkan bila sama dengan Tanggal SPD di atas">Tgl SPD <span class="redup">(bila beda)</span></th><th></th></tr></thead><tbody id="isi-tugas"></tbody></table></div>' +
       '<div class="baris-tombol" style="margin-top:10px"><button class="tombol tombol-hantu tombol-kecil" id="btn-tambah">+ Tambah baris</button>' +
       '<button class="tombol tombol-hantu tombol-kecil" id="btn-tambah5">+ 5 baris</button>' +
       '<span class="redup" id="ringkas-tugas"></span></div>' +
@@ -444,7 +448,7 @@
   function tampilTugas() {
     var f = keadaan.form, peta = petaPegawai();
     $("isi-tugas").innerHTML = f.penugasan.map(function (r, i) {
-      var p = peta[String(r.nama).trim().toLowerCase()];
+      var p = peta[kunciNama(r.nama)];
       var kelas = (r.nama && !p ? " salah" : "") + (r.tujuan && !cariPosyandu(r.tujuan) ? " salah-tujuan" : "");
       return '<tr data-i="' + i + '"' + (kelas ? ' class="' + kelas.trim() + '"' : "") + '><td class="redup">' + (i + 1) + '</td>' +
         '<td><input data-k="nomor" value="' + esc(r.nomor) + '" inputmode="numeric"></td>' +
@@ -453,6 +457,7 @@
         '<td><input data-k="tujuan" list="dl-tujuan" value="' + esc(r.tujuan) + '" placeholder="Ketik nama posyandu…">' +
         '<div class="jabatan">' + esc(ketTujuan(r.tujuan)) + '</div></td>' +
         '<td><input data-k="tanggal" type="date" value="' + esc(r.tanggal) + '"></td>' +
+        '<td><input data-k="tglSPD" type="date" value="' + esc(r.tglSPD || "") + '" title="Kosongkan bila sama dengan Tanggal SPD di atas"></td>' +
         '<td class="aksi"><button class="tombol tombol-hantu tombol-kecil" data-salin="' + i + '" title="Salin baris">Salin</button> ' +
         '<button class="tombol tombol-bahaya tombol-kecil" data-hapus="' + i + '" title="Hapus baris">✕</button></td></tr>';
     }).join("");
@@ -463,7 +468,7 @@
         f.penugasan[i][el.getAttribute("data-k")] = el.value;
         keadaan.berubah = true;
         if (el.getAttribute("data-k") === "nama") {
-          var p = petaPegawai()[el.value.trim().toLowerCase()];
+          var p = petaPegawai()[kunciNama(el.value)];
           el.parentNode.querySelector(".jabatan").textContent = p ? p.jabatan : (el.value ? "Tidak ada di Data Pegawai" : "");
           el.closest("tr").classList.toggle("salah", !!el.value && !p);
         }
@@ -489,7 +494,7 @@
     Array.prototype.forEach.call(document.querySelectorAll("[data-salin]"), function (b) {
       b.addEventListener("click", function () {
         var i = +b.getAttribute("data-salin");
-        f.penugasan.splice(i + 1, 0, baris({ nomor: f.penugasan[i].nomor, nama: f.penugasan[i].nama, tujuan: "", tanggal: "" }));
+        f.penugasan.splice(i + 1, 0, baris({ nomor: f.penugasan[i].nomor, nama: f.penugasan[i].nama, tujuan: "", tanggal: "", tglSPD: f.penugasan[i].tglSPD || "" }));
         keadaan.berubah = true;
         tampilTugas();
       });
@@ -705,11 +710,11 @@
   }
   function tampilPegawai() {
     tabelInduk({
-      data: function () { return keadaan.pegawai; }, satuan: "pegawai", cari: "Cari nama, NIP, atau jabatan…",
+      data: function () { return keadaan.pegawai.map(function (p) { return Object.assign({}, p, { nama: SPDCore.rapikanNama(p.nama) }); }); }, satuan: "pegawai", cari: "Cari nama, NIP, atau jabatan…",
       kolom: [["nama", "Nama (dan gelar)"], ["nip", "NIP / NIK"], ["pangkat", "Pangkat / Gol."], ["jabatan", "Jabatan"]],
       baru: function () { return { nama: "", nip: "", pangkat: "-", jabatan: "" }; },
       bersihkan: function (p) {
-        return { nama: String(p.nama).trim(), nip: String(p.nip || "").replace(/\s+/g, ""), pangkat: String(p.pangkat || "").trim() || "-", jabatan: String(p.jabatan || "").trim() || "-" };
+        return { nama: SPDCore.rapikanNama(p.nama), nip: String(p.nip || "").replace(/\s+/g, ""), pangkat: String(p.pangkat || "").trim() || "-", jabatan: String(p.jabatan || "").trim() || "-" };
       },
       simpan: function (bersih) {
         return Simpan.aktif().simpanPegawai(bersih).then(function (r) {
@@ -781,6 +786,8 @@
     $("btn-simpan-pengaturan").addEventListener("click", function () {
       var btn = this, nilai = {};
       Array.prototype.forEach.call(document.querySelectorAll("[data-f]"), function (el) { nilai[el.getAttribute("data-f")] = el.value; });
+      ["pejabatNama", "pptkNama", "verifKelengkapan", "verifPersiapan", "verifPptkUkm", "verifBendahara", "verifPjKeuangan"]
+        .forEach(function (x) { if (nilai[x]) nilai[x] = SPDCore.rapikanNama(nilai[x]); });
       var selesai = sibuk(btn, "Menyimpan…");
       Simpan.aktif().simpanPengaturan(nilai).then(function () {
         Object.assign(keadaan.pengaturan, nilai);

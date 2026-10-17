@@ -25,12 +25,19 @@ data disimpan di browser perangkat itu saja.
 
 ## Alur pakai
 
-1. **Buat Kegiatan Baru**: isi Nomor ST, tanggal, nama kegiatan, lalu baris penugasan
+1. **Buat Kegiatan Baru**: isi Nomor ST (lengkap), Tanggal Surat Tugas, nama kegiatan, lalu baris penugasan
    (No SPD, pegawai, tempat tujuan, tanggal). Tombol **Beri nomor otomatis** membagikan Nomor SPD
    berurutan, satu nomor per pegawai.
 2. **Periksa**. Pesan merah wajib diperbaiki sebelum mengunduh; pesan kuning boleh dilewati.
 3. **Simpan**. Kegiatan yang belum lengkap tetap bisa disimpan sebagai draf.
 4. **Unduh ▴** lalu pilih salah satu dokumen atau **Semua (4 file)**.
+
+## Tanggal Surat Tugas dan Tanggal SPD
+
+Satu kegiatan = satu Surat Tugas dengan satu nomor dan satu tanggal. Tanggal SPD boleh berbeda:
+*Tanggal SPD* di bagian atas berlaku untuk semua SPD (kosong = sama dengan Tanggal Surat Tugas), dan
+kolom *Tgl SPD* di Penugasan dipakai bila SPD pegawai tertentu bertanggal lain. Cukup isi di salah satu
+baris pegawai itu. Bulan romawi dan tahun di Nomor SPD mengikuti tanggal SPD-nya.
 
 ## Tanpa internet
 
